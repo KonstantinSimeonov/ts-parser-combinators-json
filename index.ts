@@ -44,7 +44,7 @@ export const regex =
   (regex: RegExp): Parser<string> =>
   (ctx: Context) => {
     const string = ctx.text.slice(ctx.index)
-    const match = regex.exec(string)
+    const match = string.match(regex)
     if (match?.index !== 0) return failure(ctx, regex.toString())
 
     const [value] = match
@@ -78,20 +78,25 @@ export const repeat =
   }
 
 export const optional =
-  <T>(parser: Parser<T>): Parser<T | null> =>
-  (ctx: Context) => {
+  <T>(parser: Parser<T>) =>
+  (ctx: Context): Success<T | null> => {
     const result = parser(ctx)
     return success(result.ctx, result.success ? result.value : null)
   }
 
-type Unwrap<T> = T extends Parser<infer X> ? X : never
+type UnwrapParser<P> = P extends Parser<infer Result> ? Result : never
 
-type PT<T> = T extends readonly [infer R, ...infer PS]
-  ? [Unwrap<R>, ...PT<PS>]
+type UnwrapParserTuple<ParserTuple> = ParserTuple extends readonly [
+  infer P,
+  ...infer Rest
+]
+  ? [UnwrapParser<P>, ...UnwrapParserTuple<Rest>]
   : []
 
 export const sequence =
-  <T extends readonly Parser<any>[]>(parsers: T): Parser<PT<T>> =>
+  <T extends readonly Parser<any>[]>(
+    parsers: T
+  ): Parser<UnwrapParserTuple<T>> =>
   (ctx: Context) => {
     const values: unknown[] = []
     let next_ctx = ctx
@@ -103,7 +108,7 @@ export const sequence =
       next_ctx = result.ctx
     }
 
-    return success(next_ctx, values as PT<T>)
+    return success(next_ctx, values as UnwrapParserTuple<T>)
   }
 
 export const map =

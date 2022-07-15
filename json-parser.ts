@@ -11,19 +11,25 @@ import {
   success,
 } from "./index"
 
-export type JsonValue =
+export type PrimitiveJsonValue =
   | string
   | number
   | boolean
   | null
+
+export type JsonObject = { [k: string]: JsonValue }
+
+export type JsonValue =
+  | PrimitiveJsonValue
   | JsonValue[]
-  | { [k: string]: JsonValue }
+  | JsonObject
 
 const int_parser = map(regex(/\d+/), parseInt)
 
 const float_parser: Parser<number> = ctx => {
   const result = regex(/[\d\.e\-\+]+/)(ctx)
   if (!result.success) return result
+
   const float = parseFloat(result.value)
   return Number.isNaN(float)
     ? failure(result.ctx, "float")
@@ -53,20 +59,20 @@ export const bool_parser = map(regex(/true|false/), bool => bool === "true")
 
 export const null_parser = map(literal("null"), () => null)
 
-export const primitive_parser = any<JsonValue>([
+export const primitive_parser = any<PrimitiveJsonValue>([
   number_parser,
   bool_parser,
   string_parser,
   null_parser,
 ])
 
-export const array_member_parser: Parser<JsonValue> = any([
+export const array_member_parser: Parser<JsonValue> = any<JsonValue>([
   ctx => object_parser(ctx),
   ctx => array_parser(ctx),
   primitive_parser,
 ])
 
-export const array_members_parser = repeat(
+export const array_members_parser: Parser<JsonValue[]> = repeat(
   map(
     sequence([
       regex(/\s*/),
@@ -74,11 +80,11 @@ export const array_members_parser = repeat(
       regex(/\s*/),
       optional(literal(",")),
     ] as const),
-    ([, value]) => value
+    ([, member]) => member
   )
 )
 
-export const array_parser = map(
+export const array_parser: Parser<JsonValue[]> = map(
   sequence([literal("["), array_members_parser, literal("]")] as const),
   ([, values]) => values
 )
@@ -89,14 +95,14 @@ export const key_value_pair_parser: Parser<[key: string, value: JsonValue]> =
       regex(/\s*/),
       string_parser,
       regex(/\s*:\s*/),
-      any([ctx => object_parser(ctx), array_parser, primitive_parser]),
+      ctx => json_parser(ctx),
       regex(/\s*/),
       optional(literal(",")),
     ] as const),
     ([, key, , value]) => [key, value]
   )
 
-export const object_parser: Parser<JsonValue> = map(
+export const object_parser: Parser<JsonObject> = map(
   sequence([
     literal("{"),
     repeat(key_value_pair_parser),
@@ -105,11 +111,8 @@ export const object_parser: Parser<JsonValue> = map(
   ([, kvps]) => Object.fromEntries(kvps)
 )
 
-export const json_parser: Parser<JsonValue> = any([
+export const json_parser: Parser<JsonValue> = any<JsonValue>([
   object_parser,
   array_parser,
-  string_parser,
-  number_parser,
-  bool_parser,
-  null_parser,
+  primitive_parser
 ])
